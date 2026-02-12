@@ -1,12 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Music, Calendar, Upload } from 'lucide-react';
+import { ArrowLeft, Music, Calendar, Upload, Music2, Lock } from 'lucide-react';
 import LyricsEditor from './LyricsEditor';
+import AudioPlayer from './AudioPlayer';
+import AddAudioDialog from './AddAudioDialog';
+import AdminAuth from './AdminAuth';
+import { audioStorage } from '../utils/audioStorage';
 
 const SongDetail = ({ song, onBack }) => {
     const [showEditor, setShowEditor] = useState(false);
+    const [showAudioDialog, setShowAudioDialog] = useState(false);
+    const [showAdminAuth, setShowAdminAuth] = useState(false);
     const [displayLyrics, setDisplayLyrics] = useState(song.lyrics || '');
+    const [audioData, setAudioData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [isAdmin, setIsAdmin] = useState(false);
 
     useEffect(() => {
+        // Check admin status
+        const adminStatus = localStorage.getItem('isAdmin') === 'true';
+        setIsAdmin(adminStatus);
+
         // Load user-contributed lyrics from localStorage
         const savedLyrics = JSON.parse(localStorage.getItem('userLyrics') || '{}');
         if (savedLyrics[song.id]) {
@@ -14,10 +27,60 @@ const SongDetail = ({ song, onBack }) => {
         } else {
             setDisplayLyrics(song.lyrics || '');
         }
+
+        // Load audio from IndexedDB
+        loadAudio();
     }, [song.id, song.lyrics]);
+
+    const loadAudio = async () => {
+        setLoading(true);
+        try {
+            const savedAudio = await audioStorage.getAudio(song.id);
+            if (savedAudio) {
+                setAudioData(savedAudio);
+            } else {
+                setAudioData(null);
+            }
+        } catch (error) {
+            console.error('Error loading audio:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleSaveLyrics = (newLyrics) => {
         setDisplayLyrics(newLyrics);
+    };
+
+    const handleSaveAudio = (newAudioData) => {
+        setAudioData(newAudioData);
+    };
+
+    const handleDeleteClick = () => {
+        if (isAdmin) {
+            handleDeleteAudio();
+        } else {
+            setShowAdminAuth(true);
+        }
+    };
+
+    const handleAdminSuccess = () => {
+        setIsAdmin(true);
+        handleDeleteAudio();
+    };
+
+    const handleDeleteAudio = async () => {
+        if (!confirm('Are you sure you want to delete this audio file?')) {
+            return;
+        }
+
+        try {
+            await audioStorage.deleteAudio(song.id);
+            setAudioData(null);
+        } catch (error) {
+            console.error('Error deleting audio:', error);
+            alert('Failed to delete audio. Please try again.');
+        }
     };
 
     return (
@@ -142,35 +205,112 @@ const SongDetail = ({ song, onBack }) => {
                         </h1>
                     </div>
 
-                    {/* Upload Lyrics Button */}
-                    <button
-                        onClick={() => setShowEditor(true)}
-                        style={{
-                            width: '100%',
-                            padding: '0.75rem 1.5rem',
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '12px',
-                            fontFamily: 'Outfit, Inter, sans-serif',
-                            fontSize: '0.875rem',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                            marginBottom: '1.5rem',
-                            transition: 'transform 0.2s',
-                            boxShadow: '0 4px 10px rgba(102, 126, 234, 0.3)'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                    >
-                        <Upload size={18} />
-                        {displayLyrics ? 'Edit Lyrics' : 'Upload Lyrics'}
-                    </button>
+                    {/* Action Buttons */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: audioData ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)',
+                        gap: '0.75rem',
+                        marginBottom: '1.5rem'
+                    }}>
+                        {/* Upload Lyrics Button */}
+                        <button
+                            onClick={() => setShowEditor(true)}
+                            style={{
+                                padding: '0.75rem 1rem',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '12px',
+                                fontFamily: 'Outfit, Inter, sans-serif',
+                                fontSize: '0.75rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                transition: 'transform 0.2s',
+                                boxShadow: '0 4px 10px rgba(102, 126, 234, 0.3)'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                            <Upload size={16} />
+                            {displayLyrics ? 'Edit' : 'Lyrics'}
+                        </button>
 
+                        {/* Add/Change Audio Button */}
+                        <button
+                            onClick={() => setShowAudioDialog(true)}
+                            style={{
+                                padding: '0.75rem 1rem',
+                                background: audioData
+                                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                                    : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '12px',
+                                fontFamily: 'Outfit, Inter, sans-serif',
+                                fontSize: '0.75rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                transition: 'transform 0.2s',
+                                boxShadow: audioData
+                                    ? '0 4px 10px rgba(16, 185, 129, 0.3)'
+                                    : '0 4px 10px rgba(245, 158, 11, 0.3)'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                            <Music2 size={16} />
+                            {audioData ? 'Change' : 'Audio'}
+                        </button>
+
+                        {/* Delete Audio Button (Admin Only) */}
+                        {audioData && (
+                            <button
+                                onClick={handleDeleteClick}
+                                title={isAdmin ? 'Delete audio' : 'Admin access required'}
+                                style={{
+                                    padding: '0.75rem 1rem',
+                                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '12px',
+                                    fontFamily: 'Outfit, Inter, sans-serif',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    transition: 'transform 0.2s',
+                                    boxShadow: '0 4px 10px rgba(239, 68, 68, 0.3)',
+                                    position: 'relative'
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            >
+                                <Lock size={16} />
+                                Delete
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Audio Player */}
+                    {!loading && audioData && (
+                        <AudioPlayer
+                            audioUrl={audioData.audio}
+                            fileName={audioData.fileName}
+                        />
+                    )}
+
+                    {/* Lyrics */}
                     <div>
                         {displayLyrics ? (
                             <div
@@ -197,7 +337,7 @@ const SongDetail = ({ song, onBack }) => {
                                     No lyrics available yet
                                 </p>
                                 <p style={{ fontFamily: 'Outfit, Inter, sans-serif', fontSize: '0.75rem', color: '#cbd5e1' }}>
-                                    Click "Upload Lyrics" to add them!
+                                    Click "Lyrics" to add them!
                                 </p>
                             </div>
                         )}
@@ -212,6 +352,23 @@ const SongDetail = ({ song, onBack }) => {
                     initialLyrics={displayLyrics}
                     onClose={() => setShowEditor(false)}
                     onSave={handleSaveLyrics}
+                />
+            )}
+
+            {/* Add Audio Dialog */}
+            {showAudioDialog && (
+                <AddAudioDialog
+                    song={song}
+                    onClose={() => setShowAudioDialog(false)}
+                    onSave={handleSaveAudio}
+                />
+            )}
+
+            {/* Admin Auth Dialog */}
+            {showAdminAuth && (
+                <AdminAuth
+                    onClose={() => setShowAdminAuth(false)}
+                    onSuccess={handleAdminSuccess}
                 />
             )}
         </div>
