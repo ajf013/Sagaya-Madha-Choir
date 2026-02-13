@@ -81,7 +81,7 @@ const SplashScreen = ({ onFinish }) => {
                         textShadow: '0 2px 10px rgba(0,0,0,0.1)'
                     }}
                 >
-                    Sagaya Madha<br />Choir
+                    Sagaya Madha Choir <br /> Jothipuram
                 </motion.h1>
 
                 <motion.div
@@ -114,6 +114,25 @@ const SplashScreen = ({ onFinish }) => {
                         }}
                     />
                 </motion.div>
+
+                <motion.h1
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.5, duration: 0.8 }}
+                    style={{
+                        fontSize: '2.25rem',
+                        fontWeight: 'bold',
+                        fontFamily: 'Outfit, Inter, sans-serif',
+                        textAlign: 'center',
+                        letterSpacing: '-0.025em',
+                        color: 'white',
+                        marginBottom: '1.5rem',
+                        textShadow: '0 2px 10px rgba(0,0,0,0.1)'
+                    }}
+                >
+                    CBE - 47
+                </motion.h1>
+
             </motion.div>
         </div>
     );

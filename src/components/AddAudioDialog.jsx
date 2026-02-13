@@ -6,6 +6,10 @@ const AddAudioDialog = ({ song, onClose, onSave }) => {
     const [uploading, setUploading] = useState(false);
     const [fileName, setFileName] = useState('');
     const [fileSize, setFileSize] = useState(0);
+    const [isDragging, setIsDragging] = useState(false); // New state for drag visual
+
+    const [progress, setProgress] = useState(0);
+    const [uploadedBytes, setUploadedBytes] = useState(0);
 
     const formatFileSize = (bytes) => {
         if (bytes === 0) return '0 Bytes';
@@ -15,8 +19,7 @@ const AddAudioDialog = ({ song, onClose, onSave }) => {
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     };
 
-    const handleFileSelect = async (event) => {
-        const file = event.target.files[0];
+    const processFile = async (file) => {
         if (!file) return;
 
         // Check file type
@@ -34,32 +37,51 @@ const AddAudioDialog = ({ song, onClose, onSave }) => {
         setFileName(file.name);
         setFileSize(file.size);
         setUploading(true);
+        setProgress(0);
+        setUploadedBytes(0);
 
         try {
-            // Read file as Data URL (base64)
-            const reader = new FileReader();
+            // Pass the file object directly and a progress callback
+            const publicUrl = await audioStorage.saveAudio(song.id, file, file.name, (loaded, total) => {
+                setUploadedBytes(loaded);
+                setProgress(Math.round((loaded / total) * 100));
+            });
 
-            reader.onload = async (e) => {
-                const audioData = e.target.result;
+            setUploading(false);
+            onSave({ audio: publicUrl, fileName: file.name });
+            onClose();
 
-                // Save to IndexedDB with filename
-                await audioStorage.saveAudio(song.id, audioData, file.name);
-
-                setUploading(false);
-                onSave({ audio: audioData, fileName: file.name });
-                onClose();
-            };
-
-            reader.onerror = () => {
-                setUploading(false);
-                alert('Failed to read the file. Please try again.');
-            };
-
-            reader.readAsDataURL(file);
         } catch (error) {
             console.error('Error uploading file:', error);
             setUploading(false);
-            alert('Failed to upload audio. Please try again.');
+            alert(`Failed to upload audio: ${error.message}`);
+        }
+    };
+
+    const handleFileSelect = (event) => {
+        const file = event.target.files[0];
+        processFile(file);
+    };
+
+    // Drag and Drop Handlers
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        if (!uploading) setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (uploading) return;
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            processFile(e.dataTransfer.files[0]);
+            e.dataTransfer.clearData();
         }
     };
 
@@ -133,19 +155,24 @@ const AddAudioDialog = ({ song, onClose, onSave }) => {
                 {/* Content */}
                 <div style={{ padding: '1.5rem' }}>
                     {/* File Upload Area */}
-                    <label style={{
-                        display: 'block',
-                        width: '100%',
-                        padding: '2rem',
-                        border: '2px dashed rgba(99, 102, 241, 0.3)',
-                        borderRadius: '12px',
-                        background: 'rgba(99, 102, 241, 0.05)',
-                        cursor: uploading ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s',
-                        textAlign: 'center'
-                    }}
-                        onMouseOver={(e) => !uploading && (e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)')}
-                        onMouseOut={(e) => !uploading && (e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)')}
+                    <label
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        style={{
+                            display: 'block',
+                            width: '100%',
+                            padding: '2rem',
+                            border: `2px dashed ${isDragging ? '#4f46e5' : 'rgba(99, 102, 241, 0.3)'}`,
+                            borderRadius: '12px',
+                            background: isDragging ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)',
+                            cursor: uploading ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s',
+                            textAlign: 'center',
+                            transform: isDragging ? 'scale(1.02)' : 'scale(1)'
+                        }}
+                        onMouseOver={(e) => !uploading && !isDragging && (e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)')}
+                        onMouseOut={(e) => !uploading && !isDragging && (e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)')}
                     >
                         <input
                             type="file"
@@ -154,7 +181,16 @@ const AddAudioDialog = ({ song, onClose, onSave }) => {
                             disabled={uploading}
                             style={{ display: 'none' }}
                         />
-                        <Upload size={48} color="#6366f1" style={{ opacity: 0.7, marginBottom: '1rem' }} />
+                        <Upload
+                            size={48}
+                            color={isDragging ? "#4f46e5" : "#6366f1"}
+                            style={{
+                                opacity: isDragging ? 1 : 0.7,
+                                marginBottom: '1rem',
+                                transform: isDragging ? 'translateY(-5px)' : 'none',
+                                transition: 'all 0.2s'
+                            }}
+                        />
                         <p style={{
                             fontSize: '1rem',
                             fontWeight: '600',
@@ -162,7 +198,7 @@ const AddAudioDialog = ({ song, onClose, onSave }) => {
                             fontFamily: 'Outfit, Inter, sans-serif',
                             marginBottom: '0.5rem'
                         }}>
-                            {uploading ? 'Uploading...' : 'Click to select audio file'}
+                            {uploading ? 'Uploading...' : isDragging ? 'Drop audio file here' : 'Click or Drag audio file here'}
                         </p>
                         {fileName && (
                             <p style={{
@@ -176,46 +212,59 @@ const AddAudioDialog = ({ song, onClose, onSave }) => {
                         )}
                     </label>
 
-                    {/* Info */}
-                    <div style={{
-                        marginTop: '1rem',
-                        padding: '1rem',
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        gap: '0.75rem'
-                    }}>
-                        <AlertCircle size={20} color="#3b82f6" style={{ flexShrink: 0, marginTop: '2px' }} />
-                        <div>
-                            <p style={{
-                                fontSize: '0.75rem',
-                                color: '#1e40af',
-                                fontFamily: 'Outfit, Inter, sans-serif',
-                                lineHeight: '1.5'
+                    {/* Progress Bar */}
+                    {uploading && (
+                        <div style={{ marginTop: '1.5rem' }}>
+                            <div style={{
+                                width: '100%',
+                                height: '8px',
+                                background: 'rgba(99, 102, 241, 0.1)',
+                                borderRadius: '4px',
+                                overflow: 'hidden',
+                                marginBottom: '0.5rem'
                             }}>
-                                <strong>Supported formats:</strong> MP3, WAV, OGG, M4A<br />
-                                <strong>Max file size:</strong> 50MB<br />
-                                <strong>Storage:</strong> Files are saved on your device and persist across visits
+                                <div style={{
+                                    width: `${progress}%`,
+                                    height: '100%',
+                                    background: 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%)',
+                                    borderRadius: '4px',
+                                    transition: 'width 0.2s ease-out'
+                                }} />
+                            </div>
+                            <p style={{
+                                fontSize: '0.875rem',
+                                color: '#64748b',
+                                fontFamily: 'Outfit, Inter, sans-serif',
+                                textAlign: 'center'
+                            }}>
+                                {formatFileSize(uploadedBytes)} of {formatFileSize(fileSize)} uploaded
                             </p>
                         </div>
-                    </div>
+                    )}
 
-                    {uploading && (
+                    {/* Info */}
+                    {!uploading && (
                         <div style={{
                             marginTop: '1rem',
                             padding: '1rem',
-                            background: 'rgba(245, 158, 11, 0.1)',
+                            background: 'rgba(59, 130, 246, 0.1)',
                             borderRadius: '8px',
-                            textAlign: 'center'
+                            display: 'flex',
+                            gap: '0.75rem'
                         }}>
-                            <p style={{
-                                fontSize: '0.875rem',
-                                color: '#d97706',
-                                fontFamily: 'Outfit, Inter, sans-serif',
-                                fontWeight: '600'
-                            }}>
-                                Processing audio file... Please wait.
-                            </p>
+                            <AlertCircle size={20} color="#3b82f6" style={{ flexShrink: 0, marginTop: '2px' }} />
+                            <div>
+                                <p style={{
+                                    fontSize: '0.75rem',
+                                    color: '#1e40af',
+                                    fontFamily: 'Outfit, Inter, sans-serif',
+                                    lineHeight: '1.5'
+                                }}>
+                                    <strong>Supported formats:</strong> MP3, WAV, OGG, M4A<br />
+                                    <strong>Max file size:</strong> 50MB<br />
+                                    <strong>Storage:</strong> Files are stored in the cloud and available to all users
+                                </p>
+                            </div>
                         </div>
                     )}
                 </div>

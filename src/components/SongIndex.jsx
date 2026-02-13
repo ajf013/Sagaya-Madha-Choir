@@ -57,7 +57,7 @@ const SongIndex = ({ onSongSelect }) => {
                         marginBottom: '1rem',
                         fontFamily: 'Outfit, Inter, sans-serif'
                     }}>
-                        Sagaya Madha Choir
+                        Sagaya Madha Choir Jothipuram
                     </h1>
                     <div style={{ position: 'relative' }}>
                         <Search style={{

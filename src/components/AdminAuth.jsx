@@ -11,6 +11,7 @@ const AdminAuth = ({ onClose, onSuccess }) => {
         e.preventDefault();
 
         if (passcode === ADMIN_PASSCODE) {
+            // TODO: In the future, replace this with firebase.auth().signInWithEmailAndPassword()
             localStorage.setItem('isAdmin', 'true');
             onSuccess();
             onClose();

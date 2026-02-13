@@ -16,14 +16,16 @@ export default defineConfig({
         theme_color: '#ffffff',
         icons: [
           {
-            src: 'logo.jpg',
+            src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/jpeg'
+            type: 'image/png',
+            purpose: 'any maskable'
           },
           {
-            src: 'logo.jpg',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/jpeg'
+            type: 'image/png',
+            purpose: 'any maskable'
           }
         ]
       }

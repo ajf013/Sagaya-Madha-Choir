@@ -1,95 +1,187 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Music2, Repeat } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import WaveSurfer from 'wavesurfer.js';
+import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
+import { Play, Pause, SkipBack, SkipForward, Music2, Loader2, AlertCircle, Repeat } from 'lucide-react';
 
 const AudioPlayer = ({ audioUrl, fileName }) => {
+    const containerRef = useRef(null);
+    const wavesurferRef = useRef(null);
     const audioRef = useRef(null);
+    const regionsPluginRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [waveformError, setWaveformError] = useState(null);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [loopStart, setLoopStart] = useState(null);
-    const [loopEnd, setLoopEnd] = useState(null);
     const [isLooping, setIsLooping] = useState(false);
 
     useEffect(() => {
-        const audio = audioRef.current;
-        if (!audio) return;
+        if (!audioUrl || !containerRef.current) return;
 
-        const updateTime = () => {
-            setCurrentTime(audio.currentTime);
+        setIsLoading(true);
+        setError(null);
+        setWaveformError(null);
+        setCurrentTime(0);
+        setDuration(0);
+        setIsPlaying(false);
+        setIsLooping(false);
 
-            // Check if we need to loop
-            if (isLooping && loopStart !== null && loopEnd !== null) {
-                if (audio.currentTime >= loopEnd) {
-                    audio.currentTime = loopStart;
-                }
+        const audio = new Audio();
+        audio.controls = false;
+        audio.src = audioUrl;
+        audio.crossOrigin = "anonymous";
+        audioRef.current = audio;
+
+        let ws;
+        try {
+            ws = WaveSurfer.create({
+                container: containerRef.current,
+                waveColor: 'rgba(99, 102, 241, 0.4)',
+                progressColor: '#6366f1',
+                cursorColor: '#4f46e5',
+                barWidth: 2,
+                barGap: 3,
+                barRadius: 3,
+                height: 80,
+                responsive: true,
+                normalize: true,
+                media: audio,
+            });
+        } catch (e) {
+            console.error("WaveSurfer Init Error:", e);
+            setWaveformError("Waveform initialization failed.");
+            setIsLoading(false);
+            return;
+        }
+
+        const wsRegions = ws.registerPlugin(RegionsPlugin.create());
+        regionsPluginRef.current = wsRegions;
+
+        wsRegions.enableDragSelection({
+            color: 'rgba(34, 197, 94, 0.2)',
+            drag: true,
+            resize: true,
+        });
+
+        ws.on('ready', () => {
+            setIsLoading(false);
+            setDuration(ws.getDuration());
+        });
+
+        ws.on('interaction', () => {
+            ws.play();
+        });
+
+        ws.on('audioprocess', () => {
+            setCurrentTime(ws.getCurrentTime());
+        });
+
+        ws.on('finish', () => {
+            setIsPlaying(false);
+        });
+
+        audio.onerror = (e) => {
+            console.error("Audio Element Error:", e);
+            if (audio.crossOrigin === "anonymous") {
+                console.log("Retrying audio without CORS...");
+                audio.crossOrigin = null;
+                audio.src = audioUrl;
+                setWaveformError("Visuals unavailable (CORS restricted). Audio should still play.");
+                return;
             }
+            console.error("Audio failed to load completely.");
+            setWaveformError("Audio might not be loadable.");
+            setIsLoading(false);
         };
 
-        const updateDuration = () => setDuration(audio.duration);
-        const handleEnded = () => setIsPlaying(false);
+        ws.on('error', (err) => {
+            console.error("WaveSurfer Error:", err);
+            setWaveformError("Waveform could not be generated.");
+            setIsLoading(false);
+        });
 
-        audio.addEventListener('timeupdate', updateTime);
-        audio.addEventListener('loadedmetadata', updateDuration);
-        audio.addEventListener('ended', handleEnded);
+        // Loop Logic
+        wsRegions.on('region-created', (region) => {
+            // Remove other regions to allow only one loop at a time
+            const regions = wsRegions.getRegions();
+            regions.forEach(r => {
+                if (r.id !== region.id) r.remove();
+            });
+            setIsLooping(true);
+
+            // Jump to start of region and play
+            // Note: region.play() plays from start of region and should loop if configured
+            // but region.play() in this version loops the region once then continues? 
+            // The default behavior of Regions plugin loop is usually auto.
+            // Let's force it to play from start.
+            region.play();
+        });
+
+        wsRegions.on('region-updated', (region) => {
+            // When resizing/moving ends, we can also jump?
+            // Actually 'region-updated' fires continuously. 'region-update-end' is better.
+        });
+
+        wsRegions.on('region-update-end', (region) => {
+            region.play();
+        });
+
+        wsRegions.on('region-out', (region) => {
+            // Loop functionality force
+            region.play();
+        });
+
+        wsRegions.on('region-clicked', (region, e) => {
+            e.stopPropagation();
+            region.play();
+        });
+
+        ws.on('play', () => setIsPlaying(true));
+        ws.on('pause', () => setIsPlaying(false));
+
+        wavesurferRef.current = ws;
 
         return () => {
-            audio.removeEventListener('timeupdate', updateTime);
-            audio.removeEventListener('loadedmetadata', updateDuration);
-            audio.removeEventListener('ended', handleEnded);
+            if (ws) ws.destroy();
+            if (audio) {
+                audio.pause();
+                audio.src = '';
+            }
         };
-    }, [audioUrl, isLooping, loopStart, loopEnd]);
+    }, [audioUrl]);
 
     const togglePlayPause = () => {
-        const audio = audioRef.current;
-        if (isPlaying) {
-            audio.pause();
-        } else {
-            audio.play();
+        if (wavesurferRef.current) {
+            try {
+                wavesurferRef.current.playPause();
+            } catch (e) {
+                console.error("Play error:", e);
+                if (audioRef.current) {
+                    if (audioRef.current.paused) audioRef.current.play();
+                    else audioRef.current.pause();
+                }
+            }
         }
-        setIsPlaying(!isPlaying);
     };
 
     const skipForward = () => {
-        const audio = audioRef.current;
-        audio.currentTime = Math.min(audio.currentTime + 10, duration);
+        wavesurferRef.current?.skipForward(10);
     };
 
     const skipBackward = () => {
-        const audio = audioRef.current;
-        audio.currentTime = Math.max(audio.currentTime - 10, 0);
-    };
-
-    const handleSeek = (e) => {
-        const audio = audioRef.current;
-        const bounds = e.currentTarget.getBoundingClientRect();
-        const percent = (e.clientX - bounds.left) / bounds.width;
-        audio.currentTime = percent * duration;
-    };
-
-    const setLoopPointA = () => {
-        setLoopStart(currentTime);
-        if (loopEnd === null || currentTime >= loopEnd) {
-            setLoopEnd(null);
-        }
-    };
-
-    const setLoopPointB = () => {
-        if (loopStart !== null && currentTime > loopStart) {
-            setLoopEnd(currentTime);
-            setIsLooping(true);
-        } else {
-            alert('Please set Loop Start (A) first, and ensure B is after A');
-        }
+        wavesurferRef.current?.skipBackward(10);
     };
 
     const clearLoop = () => {
-        setLoopStart(null);
-        setLoopEnd(null);
-        setIsLooping(false);
+        if (regionsPluginRef.current) {
+            regionsPluginRef.current.clearRegions();
+            setIsLooping(false);
+        }
     };
 
     const formatTime = (seconds) => {
-        if (isNaN(seconds)) return '0:00';
+        if (!seconds || isNaN(seconds)) return '0:00';
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -99,16 +191,15 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
 
     return (
         <div style={{
-            background: 'rgba(255, 255, 255, 0.3)',
+            background: 'rgba(255, 255, 255, 0.8)',
             backdropFilter: 'blur(10px)',
             borderRadius: '16px',
             padding: '1.5rem',
-            border: '1px solid rgba(255, 255, 255, 0.18)',
-            marginBottom: '1.5rem'
+            border: '1px solid rgba(255, 255, 255, 0.5)',
+            marginBottom: '1.5rem',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
         }}>
-            <audio ref={audioRef} src={audioUrl} preload="metadata" />
-
-            {/* Music Icon & Title */}
+            {/* Title & Info */}
             <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -119,12 +210,13 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
                     width: '40px',
                     height: '40px',
                     borderRadius: '8px',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: (error || waveformError) ? '#f59e0b' : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center'
+                    justifyContent: 'center',
+                    flexShrink: 0
                 }}>
-                    <Music2 size={20} color="white" />
+                    {(error || waveformError) ? <AlertCircle size={20} color="white" /> : <Music2 size={20} color="white" />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{
@@ -141,96 +233,140 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
                     <p style={{
                         fontSize: '0.75rem',
                         color: '#64748b',
-                        fontFamily: 'Outfit, Inter, sans-serif'
+                        fontFamily: 'Outfit, Inter, sans-serif',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
                     }}>
                         {formatTime(currentTime)} / {formatTime(duration)}
+                        {isLooping && (
+                            <span style={{
+                                color: '#16a34a',
+                                fontWeight: 'bold',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: '#dcfce7',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '0.7rem'
+                            }}>
+                                • Looping
+                            </span>
+                        )}
                     </p>
                 </div>
             </div>
 
-            {/* Progress Bar */}
-            <div
-                onClick={handleSeek}
-                style={{
-                    width: '100%',
-                    height: '8px',
-                    background: 'rgba(0, 0, 0, 0.1)',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
+            {/* Error Message */}
+            {(error || waveformError) && (
+                <div style={{
+                    padding: '0.75rem',
                     marginBottom: '1rem',
-                    position: 'relative',
-                    overflow: 'hidden'
-                }}
-            >
-                {/* Loop region highlight */}
-                {loopStart !== null && loopEnd !== null && (
+                    background: '#fffbeb',
+                    border: '1px solid #fcd34d',
+                    borderRadius: '8px',
+                    color: '#92400e',
+                    fontSize: '0.875rem'
+                }}>
+                    {error || waveformError}
+                </div>
+            )}
+
+            {/* Waveform Container */}
+            <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
+                {isLoading && (
                     <div style={{
                         position: 'absolute',
-                        left: `${(loopStart / duration) * 100}%`,
-                        width: `${((loopEnd - loopStart) / duration) * 100}%`,
-                        height: '100%',
-                        background: 'rgba(34, 197, 94, 0.3)',
-                        zIndex: 1
-                    }} />
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'rgba(255, 255, 255, 0.5)',
+                        zIndex: 10
+                    }}>
+                        <Loader2 className="animate-spin" size={24} color="#6366f1" />
+                    </div>
                 )}
-                {/* Progress */}
-                <div style={{
-                    width: `${(currentTime / duration) * 100}%`,
-                    height: '100%',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '4px',
-                    transition: 'width 0.1s linear',
-                    position: 'relative',
-                    zIndex: 2
-                }} />
+                <div ref={containerRef} />
+                {!isLoading && !error && !waveformError && !isLooping && (
+                    <p style={{
+                        fontSize: '0.75rem',
+                        color: '#94a3b8',
+                        textAlign: 'center',
+                        marginTop: '0.5rem',
+                        fontStyle: 'italic'
+                    }}>
+                        Drag on the waveform to create a loop
+                    </p>
+                )}
             </div>
 
-            {/* Playback Controls */}
+            {/* Controls */}
             <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '1rem',
-                marginBottom: '1rem'
+                gap: '1rem'
             }}>
-                {/* Backward 10s */}
+                {/* Clear Loop Button (only visible when looping) */}
+                {isLooping && (
+                    <button
+                        onClick={clearLoop}
+                        title="Clear Loop"
+                        style={{
+                            padding: '0.75rem',
+                            borderRadius: '8px',
+                            background: '#fee2e2',
+                            border: '1px solid #fca5a5',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s',
+                            color: '#ef4444'
+                        }}
+                    >
+                        <Repeat size={20} />
+                    </button>
+                )}
+
                 <button
                     onClick={skipBackward}
                     style={{
                         padding: '0.75rem',
                         borderRadius: '8px',
-                        background: 'rgba(255, 255, 255, 0.5)',
-                        border: 'none',
+                        background: 'white',
+                        border: '1px solid #e2e8f0',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         transition: 'all 0.2s'
                     }}
-                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.7)'}
-                    onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.5)'}
-                    title="Rewind 10 seconds"
                 >
                     <SkipBack size={20} color="#1e293b" />
                 </button>
 
-                {/* Play/Pause */}
                 <button
                     onClick={togglePlayPause}
                     style={{
                         padding: '1rem',
                         borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: (error || waveformError) ? '#f59e0b' : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                         border: 'none',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        boxShadow: '0 4px 10px rgba(102, 126, 234, 0.3)',
+                        boxShadow: '0 4px 10px rgba(99, 102, 241, 0.3)',
                         transition: 'transform 0.2s'
                     }}
-                    onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                    onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                    onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
+                    onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                 >
                     {isPlaying ? (
                         <Pause size={24} color="white" fill="white" />
@@ -239,119 +375,22 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
                     )}
                 </button>
 
-                {/* Forward 10s */}
                 <button
                     onClick={skipForward}
                     style={{
                         padding: '0.75rem',
                         borderRadius: '8px',
-                        background: 'rgba(255, 255, 255, 0.5)',
-                        border: 'none',
+                        background: 'white',
+                        border: '1px solid #e2e8f0',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         transition: 'all 0.2s'
                     }}
-                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.7)'}
-                    onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.5)'}
-                    title="Forward 10 seconds"
                 >
                     <SkipForward size={20} color="#1e293b" />
                 </button>
-            </div>
-
-            {/* A-B Loop Controls */}
-            <div style={{
-                borderTop: '1px solid rgba(0, 0, 0, 0.1)',
-                paddingTop: '1rem'
-            }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    marginBottom: '0.75rem'
-                }}>
-                    <Repeat size={16} color="#64748b" />
-                    <span style={{
-                        fontSize: '0.75rem',
-                        fontWeight: '600',
-                        color: '#64748b',
-                        fontFamily: 'Outfit, Inter, sans-serif',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em'
-                    }}>
-                        Loop Section {isLooping && '(Active)'}
-                    </span>
-                </div>
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: '0.5rem'
-                }}>
-                    <button
-                        onClick={setLoopPointA}
-                        style={{
-                            padding: '0.5rem',
-                            background: loopStart !== null ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' : 'rgba(255, 255, 255, 0.5)',
-                            color: loopStart !== null ? 'white' : '#1e293b',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            fontFamily: 'Outfit, Inter, sans-serif',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        title={`Set loop start at ${formatTime(currentTime)}`}
-                    >
-                        {loopStart !== null ? `A: ${formatTime(loopStart)}` : 'Set A'}
-                    </button>
-                    <button
-                        onClick={setLoopPointB}
-                        style={{
-                            padding: '0.5rem',
-                            background: loopEnd !== null ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' : 'rgba(255, 255, 255, 0.5)',
-                            color: loopEnd !== null ? 'white' : '#1e293b',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            fontFamily: 'Outfit, Inter, sans-serif',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        title={`Set loop end at ${formatTime(currentTime)}`}
-                    >
-                        {loopEnd !== null ? `B: ${formatTime(loopEnd)}` : 'Set B'}
-                    </button>
-                    <button
-                        onClick={clearLoop}
-                        disabled={loopStart === null && loopEnd === null}
-                        style={{
-                            padding: '0.5rem',
-                            background: 'rgba(239, 68, 68, 0.2)',
-                            color: '#dc2626',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            fontFamily: 'Outfit, Inter, sans-serif',
-                            cursor: loopStart === null && loopEnd === null ? 'not-allowed' : 'pointer',
-                            opacity: loopStart === null && loopEnd === null ? 0.5 : 1,
-                            transition: 'all 0.2s'
-                        }}
-                        onMouseOver={(e) => loopStart !== null && (e.currentTarget.style.transform = 'scale(1.02)')}
-                        onMouseOut={(e) => loopStart !== null && (e.currentTarget.style.transform = 'scale(1)')}
-                        title="Clear loop points"
-                    >
-                        Clear
-                    </button>
-                </div>
             </div>
         </div>
     );
