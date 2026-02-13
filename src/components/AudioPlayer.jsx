@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
+import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import { Play, Pause, SkipBack, SkipForward, Music2, Loader2, AlertCircle, Repeat } from 'lucide-react';
 
 const AudioPlayer = ({ audioUrl, fileName }) => {
@@ -8,6 +9,8 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
     const wavesurferRef = useRef(null);
     const audioRef = useRef(null);
     const regionsPluginRef = useRef(null);
+    const timelineRef = useRef(null);
+
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -17,7 +20,7 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
     const [isLooping, setIsLooping] = useState(false);
 
     useEffect(() => {
-        if (!audioUrl || !containerRef.current) return;
+        if (!audioUrl || !containerRef.current || !timelineRef.current) return;
 
         setIsLoading(true);
         setError(null);
@@ -57,6 +60,17 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
 
         const wsRegions = ws.registerPlugin(RegionsPlugin.create());
         regionsPluginRef.current = wsRegions;
+
+        // Register Timeline Plugin
+        ws.registerPlugin(TimelinePlugin.create({
+            container: timelineRef.current,
+            primaryColor: '#64748b', // Slate 500
+            secondaryColor: '#94a3b8', // Slate 400
+            primaryFontColor: '#1e293b', // Slate 800
+            secondaryFontColor: '#64748b', // Slate 500
+            fontSize: 10,
+            timeInterval: 15, // Show ticks every 15s
+        }));
 
         wsRegions.enableDragSelection({
             color: 'rgba(34, 197, 94, 0.2)',
@@ -103,24 +117,12 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
 
         // Loop Logic
         wsRegions.on('region-created', (region) => {
-            // Remove other regions to allow only one loop at a time
             const regions = wsRegions.getRegions();
             regions.forEach(r => {
                 if (r.id !== region.id) r.remove();
             });
             setIsLooping(true);
-
-            // Jump to start of region and play
-            // Note: region.play() plays from start of region and should loop if configured
-            // but region.play() in this version loops the region once then continues? 
-            // The default behavior of Regions plugin loop is usually auto.
-            // Let's force it to play from start.
             region.play();
-        });
-
-        wsRegions.on('region-updated', (region) => {
-            // When resizing/moving ends, we can also jump?
-            // Actually 'region-updated' fires continuously. 'region-update-end' is better.
         });
 
         wsRegions.on('region-update-end', (region) => {
@@ -128,7 +130,6 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
         });
 
         wsRegions.on('region-out', (region) => {
-            // Loop functionality force
             region.play();
         });
 
@@ -291,22 +292,12 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
                         <Loader2 className="animate-spin" size={24} color="#6366f1" />
                     </div>
                 )}
+
+                {/* Waveform Div */}
                 <div ref={containerRef} />
 
-                {!isLoading && !error && !waveformError && (
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        marginTop: '0.25rem',
-                        fontSize: '0.75rem',
-                        color: '#64748b',
-                        fontFamily: 'Outfit, Inter, sans-serif',
-                        fontWeight: '500'
-                    }}>
-                        <span>0:00</span>
-                        <span>{formatTime(duration)}</span>
-                    </div>
-                )}
+                {/* Timeline Container */}
+                <div ref={timelineRef} style={{ marginTop: '0.25rem' }} />
 
                 {!isLoading && !error && !waveformError && !isLooping && (
                     <p style={{
