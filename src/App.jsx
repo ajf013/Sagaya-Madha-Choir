@@ -17,6 +17,7 @@ function App() {
     setSelectedSong(song);
     setView('detail');
     window.history.pushState({ view: 'detail', songId: song.id }, '', `#song-${song.id}`);
+    window.scrollTo(0, 0);
   };
 
   const handleBack = () => {

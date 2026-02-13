@@ -109,6 +109,11 @@
     transform: scale(1.2);
 }
 
+.footer_Icons .footer_refresh:hover svg {
+    color: #667eea !important;
+    transform: rotate(180deg) scale(1.2);
+}
+
 .footer_content strong {
     margin-left: 5px;
 }

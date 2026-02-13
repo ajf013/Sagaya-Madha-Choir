@@ -1,6 +1,6 @@
 import React from 'react';
 import './Footer.css';
-import { Copyright } from 'lucide-react';
+import { Copyright, RefreshCw } from 'lucide-react';
 
 const Footer = () => {
     return (
@@ -54,6 +54,9 @@ const Footer = () => {
                             </g>
                         </svg>
                     </a>
+                </span>
+                <span className="footer_refresh" onClick={() => window.location.reload()} style={{ cursor: 'pointer' }} title="Refresh App">
+                    <RefreshCw size={24} style={{ color: '#1e293b', transition: 'all 0.3s', marginTop: '2px' }} />
                 </span>
             </div>
             <div className="footer_content" style={{
