@@ -292,6 +292,22 @@ const AudioPlayer = ({ audioUrl, fileName }) => {
                     </div>
                 )}
                 <div ref={containerRef} />
+
+                {!isLoading && !error && !waveformError && (
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        marginTop: '0.25rem',
+                        fontSize: '0.75rem',
+                        color: '#64748b',
+                        fontFamily: 'Outfit, Inter, sans-serif',
+                        fontWeight: '500'
+                    }}>
+                        <span>0:00</span>
+                        <span>{formatTime(duration)}</span>
+                    </div>
+                )}
+
                 {!isLoading && !error && !waveformError && !isLooping && (
                     <p style={{
                         fontSize: '0.75rem',

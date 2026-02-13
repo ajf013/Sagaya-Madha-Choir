@@ -21,7 +21,7 @@ function App() {
   };
 
   const handleBack = () => {
-    setSelectedSong(null);
+    // Keep selectedSong set so the player persists
     setView('index');
   };
 
@@ -51,18 +51,18 @@ function App() {
         <SplashScreen onFinish={handleSplashFinish} />
       )}
 
-      {view === 'index' && (
-        <>
-          <SongIndex onSongSelect={handleSongSelect} />
-          <Footer />
-        </>
-      )}
+      {/* Index View - Always mounted, hidden when not active */}
+      <div style={{ display: view === 'index' ? 'block' : 'none' }}>
+        <SongIndex onSongSelect={handleSongSelect} />
+        <Footer />
+      </div>
 
-      {view === 'detail' && selectedSong && (
-        <>
+      {/* Detail View - Mounted if song selected, hidden if back to index to keep audio playing */}
+      {selectedSong && (
+        <div style={{ display: view === 'detail' ? 'block' : 'none' }}>
           <SongDetail song={selectedSong} onBack={handleBack} />
           <Footer />
-        </>
+        </div>
       )}
     </>
   );
