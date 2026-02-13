@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'Sagaya Madha Choir',
-        short_name: 'Choir App',
+        name: 'Sagaya Madha Choir Jothipuram',
+        short_name: 'Sagaya Madha Choir Jothipuram',
         description: 'Sagaya Madha Choir Song Book',
         theme_color: '#ffffff',
         icons: [
